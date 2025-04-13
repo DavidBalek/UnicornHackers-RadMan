@@ -119,10 +119,10 @@ class RadiofarmacumStock:
     for delivery in self.deliveries:
       if delivery.time_delivery == delivery_time:
         if delivery.time_delivery <= application_time:
-          if delivery.timepoint_activity(application_time, self.rate_constant) >= applied_activity:
-            delivery.applications.append((application_time, applied_activity, id))
-          else:
-            print(f"There is not enough of activity for the radiofarmacum {self.type_}")
+          # if delivery.timepoint_activity(application_time, self.rate_constant) >= applied_activity:
+          delivery.applications.append((application_time, applied_activity, id))
+          # else:
+            # print(f"There is not enough of activity for the radiofarmacum {self.type_}")
         else:
            print("The application cannot be done using this stock as it has not been delivered yet")
 
@@ -296,6 +296,26 @@ pharms_dict = {"FDG_onco": FDG_onco, "FDG_brain": FDG_brain, "Ga68": Ga68, "meth
 
 def generate_test_set(size):
   return [(Person(i, i, rnd.gauss(85.0, 20.0)), pharms_dict[rnd.randint(0, len(pharms_dict) - 1)]) for i in range(size)]
+
+
+def generate_demo_set():
+  masses = [81,56,77,119,89,62,93,87,111,64,58,94,71,57,87]
+  farmaka  = ["FDG_onco","FDG_onco","FDG_onco","FDG_onco", "FDG_brain", "FDG_brain", "FDG_brain", "methionin", "methionin", "methionin", "methionin", "vizamyl", "vizamyl", "vizamyl", "vizamyl"]
+  id_list = [1, 2, 3, 4, 5, 6,7,8,9,10,11,12,13,14,15]
+
+  dict_output=[]
+
+  for j in range(0, len(masses)):
+            mass = masses[j]
+            patient_id = id_list[j]
+            treatment = farmaka[j]
+            diabetes = 0
+
+            dict_output.append({"mass_entry": mass, "id_entry": patient_id, "treatment_var": treatment, "diabetes_var": diabetes})
+
+  return dict_output
+
+
 
 
 def greatest_less_than(lst, x):
@@ -667,8 +687,8 @@ def open_activity_window():
         axs[idx].xaxis.set_major_locator(mdates.HourLocator(interval=1))  # Show hours
         axs[idx].tick_params(axis="x", which="both", bottom=False, labelbottom=(idx == num_radiofarm - 1))  # Bottom labels only for the last graph
         axs[idx].set_xlim(now - timedelta(minutes=60), now + timedelta(minutes=240))
-        axs[idx].legend(object.type_)
-        print(object.type_)
+        axs[idx].legend()
+
         custom_ticks = np.linspace(min(activities), max(activities)+np.average(activities), 4)
         axs[idx].set_yticks(custom_ticks)
 
@@ -725,7 +745,7 @@ def update_patient_fields():
             frame = tk.Frame(patient_fields_frame)
             frame.pack(pady=5, anchor="w")
 
-            tk.Label(frame, text=f"Pacient {i + 1} Hmotnost (kg):", font=("Helvetica", 12)).grid(row=0, column=0)
+            tk.Label(frame, text=f"Pacient {i + 1}: Hmotnost (kg):", font=("Helvetica", 12)).grid(row=0, column=0)
             mass_entry = tk.Entry(frame, font=("Helvetica", 12))
             mass_entry.grid(row=0, column=1)
 
@@ -768,9 +788,10 @@ def handle_form_submission():
             patients_data[idx] = {"mass_entry": mass, "id_entry": patient_id, "treatment_var": treatment, "diabetes_var": diabetes}
 
 
-        results = generate_results_param(patients_data)
+        #results = generate_results_param(patients_data)
+        results = generate_results_param(generate_demo_set())
         results.sort_by_lowest_accumulation_time()
-        start_times = results.get_starting_accumulation_times()    #[480]*number_of_patients   #? Here function from David for getting start times, input: patients_data, output: dict{id, start_times}
+        start_times = results.get_starting_accumulation_times()   #? Here function from David for getting start times, input: patients_data, output: dict{id, start_times}
         PET_times = results.get_total_pet_times()
         accumulation_times = results.get_total_accumulation_times()
 
@@ -780,6 +801,9 @@ def handle_form_submission():
         midnight = time_formatting((2025, 4, 13, 0, 0))
         for patient in list_radiofarmacum_patient_needs:
             type = patient["type"]
+            if type == "FDG_brain" or type == "FDG_onco":
+               type = "FDG"
+
             activity_order = patient["activity_order"]
             delivery_time = midnight + timedelta(minutes=patient["delivery_time"])
             halftime = patient["half_time"]
@@ -790,7 +814,7 @@ def handle_form_submission():
                 else:
                     dictionary_of_radiofarmacums[type][1][delivery_time] += activity_order
             else:
-                if delivery_time not in dictionary_of_radiofarmacums[type]:
+                if delivery_time not in dictionary_of_radiofarmacums[type][1]:
                     dictionary_of_radiofarmacums[type][1][delivery_time] = activity_order
                 else:
                     dictionary_of_radiofarmacums[type][1][delivery_time] += activity_order
@@ -808,9 +832,16 @@ def handle_form_submission():
             id = patient["id"]
             activity_treatment = patient["activity_treatment"]
             for farmac in radiofarmacum_stock:
-                if patient["type"] == farmac.type_:
+                type = patient["type"]
+                if type == "FDG_brain" or type == "FDG_onco":
+                   type = "FDG"
+                if type == farmac.type_:
                     farmac.application(time_application, activity_treatment, id, time_delivery)
 
+        for farm in radiofarmacum_stock:
+           for delivery in farm.deliveries:
+              for application in delivery.applications:
+                 print(farm.type_,application)
         #test not really needed
         # for rad in radiofarmacum_stock:
         #     print(rad.type_, rad.halftime, len(rad.deliveries),[(delivery.time_delivery, delivery.starting_activity) for delivery in rad.deliveries])
@@ -887,25 +918,7 @@ def draw_chart(ax):
     ax.yaxis.grid(True, which='minor', linestyle='--', linewidth=0.7, alpha=1)
 
 
-    # def make_text():
-    #     next_actions = results.get_itinerary(now)
-    #     top_right_text = ax.text(ax.get_xlim()[1]-0.02, ax.get_ylim()[1]-0.02,  "", ha="right", va="top", fontsize = 16, color="blue")
 
-    #     text = ""
-    #     for (what, who, time) in next_actions:
-    #         if str(what) == "pet_starts":
-    #             matter = "Scanning začíná"  + " pacient " + str(who)
-    #         elif str(what) == "acc_starts":
-    #            matter = "Akumulaci začíná"  + " pacient " + str(who)
-    #         else:
-    #             if str(who) == "FDG_onco" or "FDG_brain":
-    #               matter = "Dodávka " + "FDG"
-    #             else:
-    #                matter = "Dodávka " + str(who)
-
-    #         text += str(time) + " min: \n" +  str(matter) + "\n"
-
-    #     top_right_text.set_text(text)
     def make_text():
       next_actions = results.get_itinerary(now)
 
